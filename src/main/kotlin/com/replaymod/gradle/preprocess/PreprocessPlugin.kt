@@ -25,14 +25,14 @@ import java.util.stream.Collectors
 
 class PreprocessPlugin : Plugin<Project> {
     override fun apply(project: Project) {
-        val parent = project.parent
-        if (parent == null) {
+        val root = project.rootProject
+        if (project == root) {
             project.apply<RootPreprocessPlugin>()
             return
         }
 
-        project.evaluationDependsOn(parent.path)
-        val rootExtension = parent.extensions.getByType<RootPreprocessExtension>()
+        project.evaluationDependsOn(root.path)
+        val rootExtension = root.extensions.getByType<RootPreprocessExtension>()
         val graph = rootExtension.rootNode ?: throw IllegalStateException("Preprocess graph was not configured.")
         val projectNode = graph.findNode(project.name) ?: throw IllegalStateException("Prepocess graph does not contain ${project.name}.")
 
@@ -46,12 +46,12 @@ class PreprocessPlugin : Plugin<Project> {
 
         if (coreProject == project.name) {
             project.the<SourceSetContainer>().configureEach {
-                java.setSrcDirs(listOf(parent.file("src/$name/java")))
-                resources.setSrcDirs(listOf(parent.file("src/$name/resources")))
+                java.setSrcDirs(listOf(root.file("src/$name/java")))
+                resources.setSrcDirs(listOf(root.file("src/$name/resources")))
                 if (kotlin) {
                     withGroovyBuilder { getProperty("kotlin") as SourceDirectorySet }.setSrcDirs(listOf(
-                            parent.file("src/$name/kotlin"),
-                            parent.file("src/$name/java")
+                            root.file("src/$name/kotlin"),
+                            root.file("src/$name/java")
                     ))
                 }
             }
@@ -60,7 +60,7 @@ class PreprocessPlugin : Plugin<Project> {
             val (inheritedNode, extraMappings) = inheritedLink ?: graph.findParent(projectNode)!!
             val (mappingFile, mappingFileInverted) = extraMappings
             val reverseMappings = (inheritedLink != null) != mappingFileInverted
-            val inherited = parent.evaluationDependsOn(inheritedNode.project)
+            val inherited = root.evaluationDependsOn(inheritedNode.project)
 
             project.the<SourceSetContainer>().configureEach {
                 val inheritedSourceSet = inherited.the<SourceSetContainer>()[name]
@@ -171,7 +171,7 @@ class PreprocessPlugin : Plugin<Project> {
 
                 from(project.file("src"))
                 from(File(project.buildDir, "preprocessed"))
-                into(File(parent.projectDir, "src"))
+                into(File(root.projectDir, "src"))
 
                 project.the<SourceSetContainer>().all {
                     val cName = if (name == "main") "" else name.capitalize()
@@ -217,7 +217,7 @@ class PreprocessPlugin : Plugin<Project> {
                             val node = graph.findNode(project.name)!!
                             val nextLink = node.links.find { it.first.findNode(coreProject) != null }
                             val (nextNode, _) = nextLink ?: graph.findParent(node)!!
-                            val nextProject = parent.project(nextNode.project)
+                            val nextProject = root.project(nextNode.project)
                             preserveOverwrites(nextProject, overwritten)
                         }
                     }
@@ -291,7 +291,7 @@ internal abstract class BakeNamedToOfficialMappings : DefaultTask() {
             TinyReader(tiny, "named", "official").read()
         } else {
             val iMappings = namedToIntermediaryMappings.get()
-            val iMapSet = readMappings(iMappings.format, iMappings.file.toPath())
+            val iMapSet = readMappings(iMappings!!.format, iMappings.file.toPath())
             val oMapSet = readMappings(mappings.format, mappings.file.toPath())
             oMapSet.join(iMapSet.reverse()).reverse()
         }
